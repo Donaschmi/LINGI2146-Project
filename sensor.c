@@ -38,6 +38,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "contiki.h"
 #include "net/rime/rime.h"
@@ -54,13 +55,14 @@
 #define NUM_HISTORY_ENTRIES 4
 
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
-static children_t* children = NULL;
+static child_t** children = NULL;
 static parent_t* parent = NULL;
+static struct broadcast_conn broadcast;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
-PROCESS(test_runicast_process, "runicast test");
-AUTOSTART_PROCESSES(&test_runicast_process);
+PROCESS(sensor_process, "sensor_process");
+AUTOSTART_PROCESSES(&sensor_process);
 /*---------------------------------------------------------------------------*/
 /* OPTIONAL: Sender history.
  * Detects duplicate callbacks at receiving nodes.
@@ -143,8 +145,30 @@ recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
    *    -If no parent or better hops : send request to parent
    *    -If parent_dead : set parent to null and warn children
    */
+  packet_t* packet = (packet_t*) packetbuf_dataptr();
+  int type = packet->type;
+  printf("Received packet");
+  switch (type){
+    case DATA:
+      printf(" : Data\n");
+      break;
+    case COMMAND:
+      printf(" : Command\n");
+      break;
+    case ALIVE:
+      printf(" : Alive\n");
+      break;
+    case REQUEST:
+      printf(" : Request\n");
+      break;
+    case UNLINKED:
+      printf(" : Unlinked\n");
+      break;
+    default:
+      break;
+  }
 }
-static const struct broadcast_callbacks broadcast_callbacks = {broadcast_recv};
+static const struct broadcast_callbacks broadcast_callbacks = {recv_broadcast};
 
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(sensor_process, ev, data)
@@ -153,9 +177,32 @@ PROCESS_THREAD(sensor_process, ev, data)
   /**
    *  Initialize parent and children and databuffer
    */
+  if (parent == NULL){
+    parent = malloc(sizeof(parent_t));
+    if (parent == NULL){
+      printf("Error allocating memory for parent!\n");
+    }
+    parent->addr.u8[0] = 0;
+    parent->addr.u8[1] = 0;
+    parent->RSSI = 0;
+    parent->id = UINT8_MAX;
+    printf("Allocated memory for parent\n");
+  }
+
+  if (children == NULL) {
+    children = (child_t**) malloc(sizeof(child_t*) * CHILDREN_SIZE);
+    if (children == NULL) {
+      printf("Error allocating memory for children!\n");
+    }
+    int i;
+    for(i = 0; i<CHILDREN_SIZE; i++){
+      children[i] = NULL;
+    }
+    printf("Allocated memory for children\n");
+  }
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
-  PROCESS_EXITHANDLER(broadcast_close(&broadcasts);)
+  PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
   PROCESS_BEGIN();
 
@@ -166,20 +213,22 @@ PROCESS_THREAD(sensor_process, ev, data)
   list_init(history_table);
   memb_init(&history_mem);
 
-  /* Receiver node: do nothing */
-  if(linkaddr_node_addr.u8[0] == 1 &&
-     linkaddr_node_addr.u8[1] == 0) {
-    PROCESS_WAIT_EVENT_UNTIL(0);
-  }
 
+  printf("Before loop\n");
   while(1) {
     static struct etimer et;
 
-    etimer_set(&et, 10*CLOCK_SECOND);
+    etimer_set(&et, 60*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
     /*
      *  Generate fake value and send it to parent unless valve is open
      */
+    request_t req;
+    req.type = REQUEST;
+    packetbuf_copyfrom(&req, sizeof(request_t));
+    printf("Packet copied \n");
+    broadcast_send(&broadcast);
+    printf("Broadcast sent \n");
   }
 
   PROCESS_END();
