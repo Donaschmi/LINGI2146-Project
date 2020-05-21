@@ -51,13 +51,11 @@
 
 #include "utils.h"
 
-#define MAX_RETRANSMISSIONS 4
 #define NUM_HISTORY_ENTRIES 4
 
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
 static parent_t* parent = NULL;
-static struct broadcast_conn broadcast;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
@@ -121,8 +119,11 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 static void
 sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-  printf("runicast message sent to %d.%d, retransmissions %d\n",
-	 to->u8[0], to->u8[1], retransmissions);
+  if (no_parent(parent)){
+    parent->addr.u8[0] = to->u8[0];
+    parent->addr.u8[1] = to->u8[1];
+    printf("New parent youhouuu\n");
+  }
 }
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
@@ -157,6 +158,13 @@ recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
       break;
     case ALIVE:
       printf(" : Alive\n");
+      // Do i have a parent ? If not this one can be.
+      alive_t* pkt = (alive_t*) packet;
+      if (no_parent(parent) || pkt->id < parent->id){
+        // send request to be child to "from"
+        send_request(parent, pkt->id, from);
+        printf("Sent Runicast packet : request parent\n");
+      }
       break;
     case REQUEST:
       printf(" : Request\n");
@@ -213,8 +221,6 @@ PROCESS_THREAD(sensor_process, ev, data)
   list_init(history_table);
   memb_init(&history_mem);
 
-
-  printf("Before loop\n");
   while(1) {
     static struct etimer et;
 
@@ -223,12 +229,15 @@ PROCESS_THREAD(sensor_process, ev, data)
     /*
      *  Generate fake value and send it to parent unless valve is open
      */
-    request_t req;
-    req.type = REQUEST;
-    packetbuf_copyfrom(&req, sizeof(request_t));
-    printf("Packet copied \n");
-    broadcast_send(&broadcast);
-    printf("Broadcast sent \n");
+    if (!no_parent(parent)){
+      alive_t alive;
+      alive.type = ALIVE;
+      alive.id = parent->id + 1;
+      packetbuf_copyfrom(&alive, sizeof(alive_t));
+      printf("Packet copied \n");
+      broadcast_send(&broadcast);
+      printf("Broadcast sent \n");
+    }
   }
 
   PROCESS_END();

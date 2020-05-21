@@ -51,13 +51,10 @@
 
 #include "utils.h"
 
-#define MAX_RETRANSMISSIONS 4
 #define NUM_HISTORY_ENTRIES 4
 
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
-static parent_t* parent = NULL;
-static struct broadcast_conn broadcast;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
@@ -115,14 +112,32 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
    *      -If true : Add rcv to children if not parent
    *  - Check message type
    */
-  printf("runicast message received from %d.%d, seqno %d\n",
-	 from->u8[0], from->u8[1], seqno);
+  packet_t* packet = (packet_t*) packetbuf_dataptr();
+  int type = packet->type;
+  switch (type){
+    case DATA:
+      printf(" : Data\n");
+      break;
+    case COMMAND:
+      printf(" : Command\n");
+      break;
+    case ALIVE:
+      break;
+    case REQUEST:
+      add_to_children(children, from);
+      printf("Added to children\n");
+      break;
+    case UNLINKED:
+      printf(" : Unlinked\n");
+      break;
+    default:
+      break;
+
+  }
 }
 static void
 sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-  printf("runicast message sent to %d.%d, retransmissions %d\n",
-	 to->u8[0], to->u8[1], retransmissions);
 }
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
@@ -175,19 +190,9 @@ PROCESS_THREAD(sensor_process, ev, data)
 {
 
   /**
-   *  Initialize parent and children and databuffer
+   *  Initialize children and databuffer
+   *  Root has no parent if not server
    */
-  if (parent == NULL){
-    parent = malloc(sizeof(parent_t));
-    if (parent == NULL){
-      printf("Error allocating memory for parent!\n");
-    }
-    parent->addr.u8[0] = 0;
-    parent->addr.u8[1] = 0;
-    parent->RSSI = 0;
-    parent->id = UINT8_MAX;
-    printf("Allocated memory for parent\n");
-  }
 
   if (children == NULL) {
     children = (child_t**) malloc(sizeof(child_t*) * CHILDREN_SIZE);
@@ -223,10 +228,10 @@ PROCESS_THREAD(sensor_process, ev, data)
     /*
      *  Generate fake value and send it to parent unless valve is open
      */
-    request_t req;
-    req.type = REQUEST;
-    packetbuf_copyfrom(&req, sizeof(request_t));
-    printf("Packet copied \n");
+    alive_t alive;
+    alive.type = ALIVE;
+    alive.id = 0; // Root is id 0
+    packetbuf_copyfrom(&alive, sizeof(alive_t));
     broadcast_send(&broadcast);
     printf("Broadcast sent \n");
   }

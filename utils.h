@@ -5,6 +5,10 @@
 
 #define CHILDREN_SIZE 10
 #define BUFFER_SIZE 30
+#define MAX_RETRANSMISSIONS 4
+
+static struct broadcast_conn broadcast;
+static struct runicast_conn runicast;
 
 enum TYPES {
   DATA,
@@ -76,3 +80,47 @@ typedef struct unlinked{
 typedef struct buffer{
   data_t* data[BUFFER_SIZE];
 } buffer_t;
+
+static int no_parent(parent_t* p){
+  return p->addr.u8[0]==0 && p->addr.u8[1]==0; 
+}
+
+static void send_request(parent_t* p, uint8_t id, const linkaddr_t* p_req){
+  // Reset parent
+  p->id = id;
+  p->addr.u8[0] = 0;
+  p->addr.u8[1] = 0;
+  request_t req;
+  req.type = REQUEST;
+  packetbuf_clear();
+  packetbuf_copyfrom(&req, sizeof(request_t));
+  runicast_send(&runicast, p_req, MAX_RETRANSMISSIONS);
+}
+
+static void add_to_children(child_t** children, const linkaddr_t* new_child_addr){
+  // Check if this child already exists
+  child_t* c = (child_t*) malloc(sizeof(child_t));
+  if (c == NULL){
+    printf("Malloc failed for child.\n"); 
+  }
+  c->addr.u8[0] = new_child_addr->u8[0];
+  c->addr.u8[1] = new_child_addr->u8[1];
+  int i;
+  for(i=0; i < CHILDREN_SIZE; i++){
+    if (children[i] == NULL){ //No child in this slot, can be taken
+      children[i] = c;
+      break;
+    }
+  }
+}
+
+static child_t* is_mote_child(child_t** children, const linkaddr_t* mote){
+  int i;
+  for(i=0; i<CHILDREN_SIZE; i++){
+      if (children[i] == NULL)
+        continue;
+      if (linkaddr_cmp(mote, &children[i]->addr))
+          return children[i];
+  }
+  return NULL;
+}
