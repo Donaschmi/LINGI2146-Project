@@ -6,6 +6,8 @@
 #define CHILDREN_SIZE 10
 #define BUFFER_SIZE 30
 #define MAX_RETRANSMISSIONS 4
+#define FETCH_DELAY 60
+#define TIMEOUT_DELAY 180
 
 static struct broadcast_conn broadcast;
 static struct runicast_conn runicast;
@@ -28,6 +30,7 @@ enum COMMANDS {
 
 typedef struct child {
   linkaddr_t addr;
+  unsigned long timeout;
 } child_t;
 
 typedef struct parent {
@@ -81,10 +84,25 @@ typedef struct buffer{
   data_t* data[BUFFER_SIZE];
 } buffer_t;
 
+/**
+ *  Checks if p is a parent
+ *
+ *  @param p: Parent node
+ *
+ *  @return bool: True if p is NOT a parent, else otherwise
+ */
 static int no_parent(parent_t* p){
   return p->addr.u8[0]==0 && p->addr.u8[1]==0; 
 }
 
+/**
+ *  Send a runicast request to be child of p_req. If node had a parent before,
+ *  removes it
+ *
+ *  @param p: Current parent node
+ *  @param id: id 
+ *  @param p_req: new parent address
+ */
 static void send_request(parent_t* p, uint8_t id, const linkaddr_t* p_req){
   // Reset parent
   p->id = id;
@@ -97,23 +115,30 @@ static void send_request(parent_t* p, uint8_t id, const linkaddr_t* p_req){
   runicast_send(&runicast, p_req, MAX_RETRANSMISSIONS);
 }
 
-static void add_to_children(child_t** children, const linkaddr_t* new_child_addr){
-  // Check if this child already exists
-  child_t* c = (child_t*) malloc(sizeof(child_t));
-  if (c == NULL){
-    printf("Malloc failed for child.\n"); 
-  }
-  c->addr.u8[0] = new_child_addr->u8[0];
-  c->addr.u8[1] = new_child_addr->u8[1];
+static void send_unlinked(child_t** children){
+  unlinked_t unlinked;
+  unlinked.type = UNLINKED;
+  packetbuf_copyfrom(&unlinked, sizeof(unlinked_t));
+  broadcast_send(&broadcast);
+  printf("Sent unlinked\n");
   int i;
-  for(i=0; i < CHILDREN_SIZE; i++){
-    if (children[i] == NULL){ //No child in this slot, can be taken
-      children[i] = c;
-      break;
-    }
-  }
+for(i=0; i< CHILDREN_SIZE; i++)
+    children[i] = NULL;
 }
 
+static void forward_parent(packet_t* pkt, const linkaddr_t* parent){
+  packetbuf_copyfrom(pkt, sizeof(data_t));
+  runicast_send(&runicast, parent, MAX_RETRANSMISSIONS);
+}
+
+/**
+ *  Check if mote is a member of children
+ *
+ *  @param children: the children array
+ *  @param mote: the address of the child to check
+ *
+ *  @return child_t*: the child if it exists, else NULL
+ */
 static child_t* is_mote_child(child_t** children, const linkaddr_t* mote){
   int i;
   for(i=0; i<CHILDREN_SIZE; i++){
@@ -124,3 +149,53 @@ static child_t* is_mote_child(child_t** children, const linkaddr_t* mote){
   }
   return NULL;
 }
+
+/**
+ * Add a new child to children array
+ *
+ *  @param children: the children array
+ *  @param new_child_addr: Address of the new child to add
+ */
+static void add_to_children(child_t** children, const linkaddr_t* new_child_addr){
+  // Check if this child already exists
+  if (is_mote_child(children, new_child_addr) != NULL)
+    return;
+  child_t* c = (child_t*) malloc(sizeof(child_t));
+  if (c == NULL){
+    printf("Malloc failed for child.\n"); 
+  }
+  c->timeout = clock_seconds();
+  c->addr.u8[0] = new_child_addr->u8[0];
+  c->addr.u8[1] = new_child_addr->u8[1];
+  int i;
+  for(i=0; i < CHILDREN_SIZE; i++){
+    if (children[i] == NULL){ //No child in this slot, can be taken
+      children[i] = c;
+      printf("added children %d\n", i);
+      break;
+    }
+  }
+}
+
+static void remove_timedout_children(child_t** children){
+  unsigned long time = clock_seconds();
+  int i;
+  for(i=0; i<CHILDREN_SIZE; i++){
+    if (children[i] == NULL)
+      continue;
+    if (time - children[i]->timeout > TIMEOUT_DELAY) {
+      printf("timeout : %li : %li\n", children[i]->timeout, clock_seconds());
+      printf("Removed : %d\n", children[i]->addr.u8[0]);
+      free(children[i]);
+      children[i] = NULL;
+    }
+  }
+}
+
+static void update_child_timeout(child_t** children, const linkaddr_t* from){
+  child_t* c = is_mote_child(children, from);
+  if (c != NULL){
+    c->timeout = clock_seconds();
+  }
+}
+
