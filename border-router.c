@@ -60,6 +60,8 @@ static child_t** children = NULL;
 /*---------------------------------------------------------------------------*/
 PROCESS(sensor_process, "sensor_process");
 AUTOSTART_PROCESSES(&sensor_process);
+PROCESS(serial, "Serial line process");
+AUTOSTART_PROCESSES(&serial, &sensor_network);
 /*---------------------------------------------------------------------------*/
 /* OPTIONAL: Sender history.
  * Detects duplicate callbacks at receiving nodes.
