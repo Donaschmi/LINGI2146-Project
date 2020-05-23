@@ -3,18 +3,27 @@ import os
 import re
 import sys
 import random
+import numpy as np
+
+
+
+
 
 MAX_NUMBER_OF_VALUES = 30
 valueTable = [] #[[ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE],...]
 
-def least_square(xtable):
-    return random.randint(0,1)
+def least_square(ytable):
+    x = np.linspace(start=0,stop=29,num=30)
+    ret = np.linalg.lstsq(x,ytable)
+    print(ret)
+    return ret
 
 def add_new_data(address1, address2, value):
     for i in valueTable:
         if (i[0]==address1 and i[1]==address2):
             print("size of the value table = ", len(i[2]))
             i[3] = (i[3] + 1) % MAX_NUMBER_OF_VALUES
+            print("len of i[2] : ", len(i[2]))
             if (len(i[2]) == MAX_NUMBER_OF_VALUES):
                 i[2][i[3]] = value
                 return least_square(i[2])
