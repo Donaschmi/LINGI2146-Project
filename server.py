@@ -15,6 +15,7 @@ def main():
             print("data sent by border-router : " + string)
             string=""
             counter+=1
+            mysocket.sendall("message recu !".encode("utf-8"))
         else:
             string+=data.decode("utf-8")
 
