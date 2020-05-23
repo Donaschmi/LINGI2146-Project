@@ -1,11 +1,13 @@
-#define UTILS_H
+#ifndef UTILS_H_
+#define UTILS_H_
 #include "contiki.h"
 #include <stdlib.h>
 #include <stdint.h>
 
 #define CHILDREN_SIZE 10
 #define BUFFER_SIZE 30
-#define MAX_RETRANSMISSIONS 4
+#define MAX_RETRANSMISSIONS 10
+#define MAX_COMPUTATION_PER_SENSOR 5
 #define FETCH_DELAY 60
 #define TIMEOUT_DELAY 180
 
@@ -51,7 +53,7 @@ typedef struct packet{
 typedef struct data {
   uint8_t type;
   linkaddr_t from;
-  int sensor_value;
+  double sensor_value;
 } data_t;
 
 /**
@@ -80,9 +82,12 @@ typedef struct unlinked{
 } unlinked_t;
 
 
-typedef struct buffer{
-  data_t* data[BUFFER_SIZE];
-} buffer_t;
+typedef struct sensor_values{
+  double values[30];
+  int index;
+  int count;
+  linkaddr_t addr;
+} value_t;
 
 /**
  *  Checks if p is a parent
@@ -150,6 +155,17 @@ static child_t* is_mote_child(child_t** children, const linkaddr_t* mote){
   return NULL;
 }
 
+static value_t* is_computing_child(value_t** values, const linkaddr_t* mote){
+  int i;
+  for(i=0; i < MAX_COMPUTATION_PER_SENSOR; i++){
+    if (values[i] ==NULL)
+      continue;
+    if (linkaddr_cmp(mote, &values[i]->addr))
+      return values[i];
+  }
+  return NULL;
+}
+
 /**
  * Add a new child to children array
  *
@@ -177,6 +193,22 @@ static void add_to_children(child_t** children, const linkaddr_t* new_child_addr
   }
 }
 
+static value_t* add_to_computing(value_t** sensors, linkaddr_t* from){
+  value_t* v = (value_t*) malloc(sizeof(value_t));
+  v->index = 0;
+  v->count = 0;
+  v->addr.u8[0] = from->u8[0];
+  v->addr.u8[1] = from->u8[1];
+  int i;
+  for(i=0; i < MAX_COMPUTATION_PER_SENSOR; i++){
+    if (sensors[i] == NULL){
+      sensors[i] = v;
+      return v;
+    }
+  }
+  return NULL;
+}
+
 static void remove_timedout_children(child_t** children){
   unsigned long time = clock_seconds();
   int i;
@@ -199,3 +231,10 @@ static void update_child_timeout(child_t** children, const linkaddr_t* from){
   }
 }
 
+static void update_sensor_data(value_t* value, packet_t* pkt){
+  data_t* data = (data_t*) pkt;
+  value->values[value->index] = data->sensor_value;
+  value->index = (value->index + 1) % 30; // Wrap index
+  value->count = value->count == 30 ? 30 : value->count + 1;
+}
+#endif /* UTILS_H_ */

@@ -56,6 +56,9 @@
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
 static parent_t* parent = NULL;
+static value_t** values = NULL;
+static int slots = 0;
+static uint8_t forwarding = 1; // Is this node forwarding data to parent ?
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
@@ -124,14 +127,37 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     }
     else{
       send_unlinked(children);
-      printf("2\n");
     }
   }
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
   switch (type){
     case DATA:
-      forward_parent(packet, &parent->addr);
+      printf("Received data\n");
+      // If less than 5 sensors to compute, compute, else forward
+      value_t* value = is_computing_child(values, from);
+      if (value != NULL){
+        update_sensor_data(value, packet);
+        if (value->count == 30){
+          printf("Computing\n");
+        // Compute
+        }
+        else
+          printf("Added data but not enough samples, count : %d\n", value->count);
+      }
+      else{
+        if (slots < MAX_COMPUTATION_PER_SENSOR){
+          printf("Empry slot available\n");
+          value_t* v = add_to_computing(values, from);
+          if(v == NULL)
+            printf("Failed to add new value_t\n");
+          else
+            update_sensor_data(v, packet);
+          // We don't compute cause only one value inside
+        }
+        else
+          forward_parent(packet, &parent->addr);
+      }
       break;
     case COMMAND:
       break;
@@ -152,6 +178,7 @@ sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmiss
   if (no_parent(parent)){
     parent->addr.u8[0] = to->u8[0];
     parent->addr.u8[1] = to->u8[1];
+    printf("New parent : %d\n", to->u8[0]);
   }
 }
 static void
@@ -164,7 +191,6 @@ timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retrans
     printf("ret : %d\n", retransmissions);
   }
   // If we get timeout from parent, the link is dead and we should try to find a new parent
-
 }
 static const struct runicast_callbacks runicast_callbacks = {recv_runicast,
 							     sent_runicast,
@@ -245,6 +271,16 @@ PROCESS_THREAD(sensor_process, ev, data)
     }
   }
 
+  if (values == NULL) {
+    values = (value_t**) malloc(sizeof(value_t*) * MAX_COMPUTATION_PER_SENSOR);
+    if (values == NULL)
+      printf("Error allocating memory for computation sensor\n");
+    int i;
+    for(i=0; i < MAX_COMPUTATION_PER_SENSOR; i++){
+      values[i] = NULL;
+    }
+  }
+
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
@@ -262,26 +298,25 @@ PROCESS_THREAD(sensor_process, ev, data)
 
     etimer_set(&et, 60*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-    /*
-     *  Generate fake value and send it to parent unless valve is open
-     */
     if (!no_parent(parent)){
       remove_timedout_children(children);
       // Broadcast
+      printf("Broadcast alive\n");
       alive_t alive;
       alive.type = ALIVE;
       alive.id = parent->id + 1;
       packetbuf_clear();
       packetbuf_copyfrom(&alive, sizeof(alive_t));
       broadcast_send(&broadcast);
-      // Forward data
-      data_t data;
-      data.type = DATA;
-      data.from = linkaddr_node_addr;
-      data.sensor_value = rand();
-      packetbuf_clear();
-      packetbuf_copyfrom(&data, sizeof(data_t));
-      runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
+      
+      if (!forwarding){
+        packetbuf_clear();
+        alive.id = 0;
+        packetbuf_copyfrom(&alive, sizeof(alive_t));
+        runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
+        printf("Send alive to parent\n");
+      }
+      
     }
   }
 

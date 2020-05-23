@@ -75,6 +75,32 @@ MEMB(history_mem, struct history_entry, NUM_HISTORY_ENTRIES);
 static void
 recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
+  /* OPTIONAL: Sender history */
+  struct history_entry *e = NULL;
+  for(e = list_head(history_table); e != NULL; e = e->next) {
+    if(linkaddr_cmp(&e->addr, from)) {
+      break;
+    }
+  }
+  if(e == NULL) {
+    /* Create new history entry */
+    e = memb_alloc(&history_mem);
+    if(e == NULL) {
+      e = list_chop(history_table); /* Remove oldest at full history */
+    }
+    linkaddr_copy(&e->addr, from);
+    e->seq = seqno;
+    list_push(history_table, e);
+  } else {
+    /* Detect duplicate callback */
+    if(e->seq == seqno) {
+      printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
+       from->u8[0], from->u8[1], seqno);
+      return;
+    }
+    /* Update existing history entry */
+    e->seq = seqno;
+  }
   /*
    * Pseudo-code :
    *  - Check if recv is child
@@ -98,7 +124,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case DATA:
       printf("Data : ");
       data_t* data = (data_t*) packet;
-      printf("%d : %d.%d\n", data->sensor_value, data->from.u8[0], data->from.u8[1]);
+      printf("%f : %d.%d\n", data->sensor_value, data->from.u8[0], data->from.u8[1]);
       break;
     case COMMAND:
       printf(" : Command\n");
@@ -114,7 +140,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       break;
     default:
       break;
-
   }
 }
 static void
@@ -137,7 +162,9 @@ recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
   child_t* child = is_mote_child(children, from);
   if (child != NULL){
     child->timeout = clock_seconds();
+    printf("up child %d, %li\n", child->addr.u8[0], child->timeout);
   }
+  printf("who are you ? %d\n", from->u8[0]);
 }
 static const struct broadcast_callbacks broadcast_callbacks = {recv_broadcast};
 
