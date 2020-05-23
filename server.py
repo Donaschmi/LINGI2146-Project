@@ -6,11 +6,18 @@ import sys
 def main():
     mysocket = socket.socket()
     mysocket.connect(('localhost',60001))
-    while(True):
-        data = mysocket.recv(4096)
-        if not data:
-            break
-        print("data sent by border-router : " + data)
+    string = ""
+    counter=0
+    while(counter<10):
+        data = mysocket.recv(1)
+
+        if data.decode("utf-8")=="\n":
+            print("data sent by border-router : " + string)
+            counter+=1
+        else:
+            string+=data.decode("utf-8")
+
+        
     
     mysocket.close()
 
