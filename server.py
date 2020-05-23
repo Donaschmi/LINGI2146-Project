@@ -17,8 +17,6 @@ def main():
         else:
             string+=data.decode("utf-8")
 
-        
-    
     mysocket.close()
 
 if __name__ == "__main__":
