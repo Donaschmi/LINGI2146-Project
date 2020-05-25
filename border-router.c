@@ -59,7 +59,8 @@ static child_t** children = NULL;
 
 /*---------------------------------------------------------------------------*/
 PROCESS(sensor_process, "sensor_process");
-AUTOSTART_PROCESSES(&sensor_process);
+PROCESS(serial_process, "serial_process");
+AUTOSTART_PROCESSES(&sensor_process, &serial_process);
 /*---------------------------------------------------------------------------*/
 /* OPTIONAL: Sender history.
  * Detects duplicate callbacks at receiving nodes.
@@ -95,7 +96,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     /* Detect duplicate callback */
     if(e->seq == seqno) {
       printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
-       from->u8[0], from->u8[1], seqno);
+      from->u8[0], from->u8[1], seqno);
       return;
     }
     /* Update existing history entry */
@@ -212,3 +213,16 @@ PROCESS_THREAD(sensor_process, ev, data)
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
+PROCESS_THREAD(serial_process, ev, data)
+{
+  PROCESS_BEGIN();
+
+  for(;;) {
+     PROCESS_YIELD();
+     if(ev == serial_line_event_message) {
+       printf("borderinfo received line: %s\n", (char *)data);
+     }
+   }
+
+  PROCESS_END();
+}

@@ -12,10 +12,14 @@ def main():
         data = mysocket.recv(1)
 
         if data.decode("utf-8")=="\n":
-            print("data sent by border-router : " + string)
+            splitted = string.split()
+            if splitted[0] == "borderinfo":
+                print("borderRouter received msg")
+            else:
+                print("data sent by border-router : " + string)
             string=""
             counter+=1
-            mysocket.sendall("message recu !".encode("utf-8"))
+            mysocket.send("message recu !".encode("utf-8"))
         else:
             string+=data.decode("utf-8")
 
