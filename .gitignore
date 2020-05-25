@@ -3,3 +3,4 @@ symbols.*
 *.a
 *.z1
 *.map
+.vscode/settings.json
