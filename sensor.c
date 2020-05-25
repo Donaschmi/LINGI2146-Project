@@ -57,6 +57,7 @@
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
 static parent_t* parent = NULL;
+static node_t** head = NULL;
 static int valve_openned = 0;
 /*---------------------------------------------------------------------------*/
 
@@ -79,7 +80,6 @@ MEMB(history_mem, struct history_entry, NUM_HISTORY_ENTRIES);
 static void
 recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
-  printf("test\n");
   /* OPTIONAL: Sender history */
   struct history_entry *e = NULL;
   for(e = list_head(history_table); e != NULL; e = e->next) {
@@ -135,6 +135,12 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   switch (type){
     case DATA:
       printf("forwarding%d\n", parent->addr.u8[0]);
+      data_t* data = (data_t*) packet;
+      if (get_forward_addr(head, &data->from) == NULL){
+        node_t* node = add_to_table(head, &data->from, from);
+        if (node != NULL)
+          printf("Added new entry\n");
+      }
       forward_parent(packet, &parent->addr);
       break;
     case COMMAND: ;
@@ -143,7 +149,16 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
         process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
       }
       else{
-        printf("Forwarding command to child\n");
+        linkaddr_t* next = get_forward_addr(head, &command->dest);
+        if (next == NULL)
+          printf("No entry for this destination\n");
+        else{
+          packetbuf_clear();
+          packetbuf_copyfrom(packet, sizeof(command_t));
+          runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
+          printf("Forwarding command to child\n");
+        }
+
       }
       break;
     case ALIVE:

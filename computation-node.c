@@ -57,6 +57,7 @@
 static child_t** children = NULL;
 static parent_t* parent = NULL;
 static value_t** values = NULL;
+static node_t** head = NULL;
 static int slots = 0;
 static uint8_t forwarding = 1; // Is this node forwarding data to parent ?
 /*---------------------------------------------------------------------------*/
@@ -127,6 +128,12 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   switch (type){
     case DATA: ;
       data_t* data = (data_t*) packet;
+      if (get_forward_addr(head, &data->from) == NULL){
+        node_t* node = add_to_table(head, &data->from, from);
+        if (node != NULL)
+          printf("Added entry\n");
+      }
+
       printf("Received data from %d\n", data->from.u8[0]);
       value_t* value = is_computing_child(values, &data->from);
       if (value != NULL){
@@ -160,7 +167,16 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
         }
       }
       break;
-    case COMMAND:
+    case COMMAND: ;
+      command_t* command = (command_t*) packet;
+      linkaddr_t* next = get_forward_addr(head, &command->dest);
+      if (next == NULL)
+        printf("No entry for this destination\n");
+      else{ //Forward
+        packetbuf_clear();
+        packetbuf_copyfrom(packet, sizeof(command_t));
+        runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
+      }
       break;
     case ALIVE:
       break;
@@ -189,7 +205,6 @@ timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retrans
     // Send unlinked broadcast 
     parent = NULL;
     send_unlinked(children);
-    printf("ret : %d\n", retransmissions);
   }
   // If we get timeout from parent, the link is dead and we should try to find a new parent
 }

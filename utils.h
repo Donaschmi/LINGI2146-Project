@@ -41,6 +41,61 @@ typedef struct parent {
   int16_t RSSI;
 } parent_t;
 
+/*-----------*/
+/**
+ * Node specific 
+ */
+typedef struct node_t {
+  linkaddr_t* dest;
+  linkaddr_t* reachable_from;
+  struct node_t* next;
+} node_t;
+
+static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkaddr_t* child){
+  node_t* node = (node_t*) malloc(sizeof(node_t));
+  node->dest = dest;
+  node->reachable_from = child;
+  node->next = *head;
+  (*head) = node;
+  return node;
+}
+
+static linkaddr_t* get_forward_addr(node_t** head, const linkaddr_t* addr){
+  node_t* curr = (*head);
+  while (curr != NULL){
+    if (linkaddr_cmp(curr->dest, addr)){
+      return curr->reachable_from;
+    }
+    curr = curr->next;
+  }
+  return NULL;
+}
+
+static void remove_from_table(node_t** head, const linkaddr_t* child){
+  node_t* curr = (*head);
+  node_t* prev = curr;
+  node_t* next = NULL;
+  while (curr != NULL){
+    next = curr->next;
+    if (linkaddr_cmp(curr->reachable_from, child)){
+      if (curr == (*head)){
+        //Removing head
+        free(*head);
+        (*head) = next;
+        curr = next; // really needed?
+        prev = next;
+      }
+      else{
+        prev->next = next;
+        free(curr);
+        curr = next;
+      }
+    } else{
+      prev = curr;
+      curr = next;
+    }
+  }
+}
 
 /*----------------------*/
 typedef struct packet{
@@ -233,8 +288,6 @@ static void remove_timedout_children(child_t** children){
     if (children[i] == NULL)
       continue;
     if (time - children[i]->timeout > TIMEOUT_DELAY) {
-      printf("timeout : %li : %li\n", children[i]->timeout, clock_seconds());
-      printf("Removed : %d\n", children[i]->addr.u8[0]);
       free(children[i]);
       children[i] = NULL;
     }
