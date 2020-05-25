@@ -10,7 +10,7 @@ def main():
         data = mysocket.recv(4096)
         if not data:
             break
-        print("data sent by border-router : " + data)
+        print("data sent by border-router : " + repr(data))
     
     mysocket.close()
 
