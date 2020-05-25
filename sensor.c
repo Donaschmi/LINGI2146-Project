@@ -41,6 +41,7 @@
 #include <stdlib.h>
 
 #include "contiki.h"
+#include "leds.h"
 #include "net/rime/rime.h"
 
 #include "lib/list.h"
@@ -56,11 +57,13 @@
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
 static parent_t* parent = NULL;
+static int valve_openned = 0;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
 PROCESS(sensor_process, "sensor_process");
-AUTOSTART_PROCESSES(&sensor_process);
+PROCESS(valve_control, "valve_control");
+AUTOSTART_PROCESSES(&sensor_process, &valve_control);
 /*---------------------------------------------------------------------------*/
 /* OPTIONAL: Sender history.
  * Detects duplicate callbacks at receiving nodes.
@@ -76,6 +79,7 @@ MEMB(history_mem, struct history_entry, NUM_HISTORY_ENTRIES);
 static void
 recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
+  printf("test\n");
   /* OPTIONAL: Sender history */
   struct history_entry *e = NULL;
   for(e = list_head(history_table); e != NULL; e = e->next) {
@@ -124,16 +128,23 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     }
     else{
       send_unlinked(children);
-      printf("2\n");
     }
   }
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
   switch (type){
     case DATA:
+      printf("forwarding%d\n", parent->addr.u8[0]);
       forward_parent(packet, &parent->addr);
       break;
-    case COMMAND:
+    case COMMAND: ;
+      command_t* command = (command_t*) packet;
+      if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){
+        process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
+      }
+      else{
+        printf("Forwarding command to child\n");
+      }
       break;
     case ALIVE:
       break;
@@ -153,6 +164,7 @@ sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmiss
     parent->addr.u8[0] = to->u8[0];
     parent->addr.u8[1] = to->u8[1];
   }
+  printf("Sent runicast\n");
 }
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
@@ -161,7 +173,6 @@ timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retrans
     // Send unlinked broadcast 
     parent = NULL;
     send_unlinked(children);
-    printf("ret : %d\n", retransmissions);
   }
   // If we get timeout from parent, the link is dead and we should try to find a new parent
 
@@ -181,10 +192,7 @@ recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
    *    -If no parent or better hops : send request to parent
    *    -If parent_dead : set parent to null and warn children
    */
-  child_t* child = is_mote_child(children, from);
-  if (child != NULL){
-    child->timeout = clock_seconds();
-  }
+  update_child_timeout(children, from);
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
   switch (type){
@@ -259,7 +267,6 @@ PROCESS_THREAD(sensor_process, ev, data)
 
   while(1) {
     static struct etimer et;
-
     etimer_set(&et, 60*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
     /*
@@ -274,17 +281,35 @@ PROCESS_THREAD(sensor_process, ev, data)
       packetbuf_clear();
       packetbuf_copyfrom(&alive, sizeof(alive_t));
       broadcast_send(&broadcast);
-      // Forward data
-      data_t data;
-      data.type = DATA;
-      data.from = linkaddr_node_addr;
-      data.sensor_value = rand();
-      packetbuf_clear();
-      packetbuf_copyfrom(&data, sizeof(data_t));
-      runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
+      if (!valve_openned){ // Send data
+        data_t data;
+        data.type = DATA;
+        data.from = linkaddr_node_addr;
+        double random_value = rand() / RAND_MAX * 100;
+        data.sensor_value =  random_value;
+        packetbuf_clear();
+        packetbuf_copyfrom(&data, sizeof(data_t));
+        runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
+        printf("Sent data to parent\n");
+      }
     }
   }
 
+  PROCESS_END();
+}
+
+PROCESS_THREAD(valve_control, ev, data){
+  PROCESS_BEGIN();
+  static struct etimer et;
+  while (1){
+    PROCESS_WAIT_EVENT();
+    if (ev == PROCESS_EVENT_CONTINUE){
+      leds_on(LEDS_GREEN);
+      etimer_set(&et, 600*CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      leds_off(LEDS_GREEN);
+    }
+  }
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
