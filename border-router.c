@@ -161,12 +161,7 @@ static struct runicast_conn runicast;
 
 static void
 recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
-  child_t* child = is_mote_child(children, from);
-  if (child != NULL){
-    child->timeout = clock_seconds();
-    printf("up child %d, %li\n", child->addr.u8[0], child->timeout);
-  }
-  printf("who are you ? %d\n", from->u8[0]);
+  update_child_timeout(children, from);
 }
 static const struct broadcast_callbacks broadcast_callbacks = {recv_broadcast};
 

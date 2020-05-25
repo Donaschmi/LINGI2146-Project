@@ -41,6 +41,61 @@ typedef struct parent {
   int16_t RSSI;
 } parent_t;
 
+/*-----------*/
+/**
+ * Node specific 
+ */
+typedef struct node_t {
+  linkaddr_t* dest;
+  linkaddr_t* reachable_from;
+  struct node_t* next;
+} node_t;
+
+static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkaddr_t* child){
+  node_t* node = (node_t*) malloc(sizeof(node_t));
+  node->dest = dest;
+  node->reachable_from = child;
+  node->next = *head;
+  (*head) = node;
+  return node;
+}
+
+static linkaddr_t* get_forward_addr(node_t** head, const linkaddr_t* addr){
+  node_t* curr = (*head);
+  while (curr != NULL){
+    if (linkaddr_cmp(curr->dest, addr)){
+      return curr->reachable_from;
+    }
+    curr = curr->next;
+  }
+  return NULL;
+}
+
+static void remove_from_table(node_t** head, const linkaddr_t* child){
+  node_t* curr = (*head);
+  node_t* prev = curr;
+  node_t* next = NULL;
+  while (curr != NULL){
+    next = curr->next;
+    if (linkaddr_cmp(curr->reachable_from, child)){
+      if (curr == (*head)){
+        //Removing head
+        free(*head);
+        (*head) = next;
+        curr = next; // really needed?
+        prev = next;
+      }
+      else{
+        prev->next = next;
+        free(curr);
+        curr = next;
+      }
+    } else{
+      prev = curr;
+      curr = next;
+    }
+  }
+}
 
 /*----------------------*/
 typedef struct packet{
@@ -87,6 +142,7 @@ typedef struct sensor_values{
   int index;
   int count;
   linkaddr_t addr;
+  unsigned long timeout;
 } value_t;
 
 /**
@@ -123,15 +179,28 @@ static void send_request(parent_t* p, uint8_t id, const linkaddr_t* p_req){
 static void send_unlinked(child_t** children){
   unlinked_t unlinked;
   unlinked.type = UNLINKED;
+  packetbuf_clear();
   packetbuf_copyfrom(&unlinked, sizeof(unlinked_t));
   broadcast_send(&broadcast);
   printf("Sent unlinked\n");
   int i;
-for(i=0; i< CHILDREN_SIZE; i++)
-    children[i] = NULL;
+  for(i=0; i< CHILDREN_SIZE; i++)
+      children[i] = NULL;
+}
+
+static void send_open_valve_command(child_t* child, const linkaddr_t* mote){
+  command_t command;
+  command.type = COMMAND;
+  command.dest.u8[0] = mote->u8[0];
+  command.dest.u8[1] = mote->u8[1];
+  packetbuf_clear();
+  packetbuf_copyfrom(&command, sizeof(command_t));
+  runicast_send(&runicast, &child->addr, MAX_RETRANSMISSIONS);
+  printf("Sent command to %d\n", mote->u8[0]);
 }
 
 static void forward_parent(packet_t* pkt, const linkaddr_t* parent){
+  packetbuf_clear();
   packetbuf_copyfrom(pkt, sizeof(data_t));
   runicast_send(&runicast, parent, MAX_RETRANSMISSIONS);
 }
@@ -163,6 +232,7 @@ static value_t* is_computing_child(value_t** values, const linkaddr_t* mote){
     if (linkaddr_cmp(mote, &values[i]->addr))
       return values[i];
   }
+  printf("%d : %d\n", values[i]->addr.u8[0], mote->u8[0]);
   return NULL;
 }
 
@@ -193,16 +263,18 @@ static void add_to_children(child_t** children, const linkaddr_t* new_child_addr
   }
 }
 
-static value_t* add_to_computing(value_t** sensors, linkaddr_t* from){
+static value_t* add_to_computing(value_t** sensors, const linkaddr_t* from){
   value_t* v = (value_t*) malloc(sizeof(value_t));
   v->index = 0;
   v->count = 0;
+  v->timeout = clock_seconds();
   v->addr.u8[0] = from->u8[0];
   v->addr.u8[1] = from->u8[1];
   int i;
   for(i=0; i < MAX_COMPUTATION_PER_SENSOR; i++){
     if (sensors[i] == NULL){
       sensors[i] = v;
+      printf("Added at index %d\n", i);
       return v;
     }
   }
@@ -216,10 +288,22 @@ static void remove_timedout_children(child_t** children){
     if (children[i] == NULL)
       continue;
     if (time - children[i]->timeout > TIMEOUT_DELAY) {
-      printf("timeout : %li : %li\n", children[i]->timeout, clock_seconds());
-      printf("Removed : %d\n", children[i]->addr.u8[0]);
       free(children[i]);
       children[i] = NULL;
+    }
+  }
+}
+
+static void remove_timedout_sensors(value_t** sensors){
+  unsigned long time = clock_seconds();
+  int i;
+  for(i=0; i<MAX_COMPUTATION_PER_SENSOR; i++){
+    if (sensors[i] == NULL)
+      continue;
+    if (time - sensors[i]->timeout > TIMEOUT_DELAY) {
+      printf("Removed : %d\n", sensors[i]->addr.u8[0]);
+      free(sensors[i]);
+      sensors[i] = NULL;
     }
   }
 }
@@ -236,5 +320,10 @@ static void update_sensor_data(value_t* value, packet_t* pkt){
   value->values[value->index] = data->sensor_value;
   value->index = (value->index + 1) % 30; // Wrap index
   value->count = value->count == 30 ? 30 : value->count + 1;
+  value->timeout = clock_seconds();
+}
+
+static int least_squares(value_t* sensor){
+  return 1;
 }
 #endif /* UTILS_H_ */
