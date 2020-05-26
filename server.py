@@ -8,7 +8,7 @@ def main():
     mysocket.connect(('localhost',60001))
     string = ""
     counter=0
-    while(counter<10):
+    while(True):
         data = mysocket.recv(1)
 
         if data.decode("utf-8")=="\n":
@@ -17,9 +17,9 @@ def main():
                 print("borderRouter received msg")
             else:
                 print("data sent by border-router : " + string)
+                mysocket.send("message recu !\n".encode("utf-8"))
             string=""
             counter+=1
-            mysocket.send("message recu !".encode("utf-8"))
         else:
             string+=data.decode("utf-8")
 

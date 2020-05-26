@@ -48,6 +48,7 @@
 
 #include "dev/button-sensor.h"
 #include "dev/leds.h"
+#include "dev/serial-line.h"
 
 #include "utils.h"
 
@@ -105,7 +106,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   /*
    * Pseudo-code :
    *  - Check if recv is child
-   *    - If true : update timeout 
+   *    - If true : update timeout
    *    - If false : check if parent exist
    *      -If false : broadcast no more parent
    *      -If true : Add rcv to children if not parent
@@ -220,7 +221,13 @@ PROCESS_THREAD(serial_process, ev, data)
   for(;;) {
      PROCESS_YIELD();
      if(ev == serial_line_event_message) {
-       printf("borderinfo received line: %s\n", (char *)data);
+       char* tmpmsg = malloc(strlen((char*)data));
+       strcpy(tmpmsg,(char*)data);
+       char * splittedMsg = strtok((char *)tmpmsg, " ");
+       if(strcmp(splittedMsg, "message")==0){
+         printf("borderinfo received line: %s\n", (char *)data);
+       }
+       free(tmpmsg);
      }
    }
 
