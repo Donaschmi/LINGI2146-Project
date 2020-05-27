@@ -124,9 +124,8 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   int type = packet->type;
   switch (type){
     case DATA:
-      printf("Data : ");
       data_t* data = (data_t*) packet;
-      printf("%d.%d\n", data->from.u8[0], data->from.u8[1]);
+      printf("data %d %d %f \n", data->from.u8[0], data->from.u8[1], data->sensor_value);
       break;
     case COMMAND:
       printf(" : Command\n");
@@ -219,17 +218,32 @@ PROCESS_THREAD(serial_process, ev, data)
   PROCESS_BEGIN();
 
   for(;;) {
-     PROCESS_YIELD();
-     if(ev == serial_line_event_message) {
-       char* tmpmsg = malloc(strlen((char*)data));
-       strcpy(tmpmsg,(char*)data);
-       char * splittedMsg = strtok((char *)tmpmsg, " ");
-       if(strcmp(splittedMsg, "message")==0){
-         printf("borderinfo received line: %s\n", (char *)data);
-       }
-       free(tmpmsg);
-     }
-   }
+    PROCESS_YIELD();
+    if(ev == serial_line_event_message) {
+      char* tmpmsg = malloc(strlen((char*)data));
+      
+      strcpy(tmpmsg,(char*)data);
+      char * splittedMsg = strtok((char *)tmpmsg, " ");
+
+      if(strcmp(splittedMsg, "open")==0){ //received message should be like : "open ADDRESS[0] ADDRESS[1]"
+
+        linkaddr_t* mote = (linkaddr_t*) malloc(sizeof(linkaddr_t));
+        mote->u8[0] = atoi(strtok(NULL, " "));
+        mote->u8[1] = atoi(strtok(NULL, " "));
+
+        child_t* child = is_mote_child(children, mote);
+
+        data_t* pkt = (data_t*) malloc(sizeof(data_t));
+        pkt->type = COMMAND;
+        pkt->from = child->addr;
+
+        send_open_valve_command(child, pkt);
+        free(mote);
+        free(pkt)
+      }
+      free(tmpmsg);
+    }
+  }
 
   PROCESS_END();
 }
