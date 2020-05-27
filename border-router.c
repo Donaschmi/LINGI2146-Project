@@ -124,8 +124,9 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   int type = packet->type;
   switch (type){
     case DATA:
+      printf("data ");
       data_t* data = (data_t*) packet;
-      printf("data %d %d %f \n", data->from.u8[0], data->from.u8[1], data->sensor_value);
+      printf("%d %d %d \n", data->from.u8[0], data->from.u8[1], data->sensor_value);
       break;
     case COMMAND:
       printf(" : Command\n");
@@ -221,7 +222,7 @@ PROCESS_THREAD(serial_process, ev, data)
     PROCESS_YIELD();
     if(ev == serial_line_event_message) {
       char* tmpmsg = malloc(strlen((char*)data));
-      
+
       strcpy(tmpmsg,(char*)data);
       char * splittedMsg = strtok((char *)tmpmsg, " ");
 
@@ -239,7 +240,7 @@ PROCESS_THREAD(serial_process, ev, data)
 
         send_open_valve_command(child, pkt);
         free(mote);
-        free(pkt)
+        free(pkt);
       }
       free(tmpmsg);
     }

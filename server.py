@@ -5,7 +5,7 @@ import sys
 import random
 
 MAX_NUMBER_OF_VALUES = 30
-valueTable = [] #[(ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE),...]
+valueTable = [] #[[ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE],...]
 
 def least_square(xtable):
     return random.randint(0,1)
@@ -13,17 +13,17 @@ def least_square(xtable):
 def add_new_data(address1, address2, value):
     for i in valueTable:
         if (i[0]==address1 and i[1]==address2):
-            print("previous values = " + i)
+            print("size of the value table = ", len(i[2]))
             i[3] = (i[3] + 1) % MAX_NUMBER_OF_VALUES
-            if (len(i) == MAX_NUMBER_OF_VALUES):
+            if (len(i[2]) == MAX_NUMBER_OF_VALUES):
                 i[2][i[3]] = value
                 return least_square(i[2])
             else:
                 i[2].append(value)
-                return False
-    valueTable.append((address1, address2, [value], 0))
-    return False
-    
+                return 0
+    valueTable.append([address1, address2, [value], 0])
+    return 0
+
 
 
 
@@ -38,10 +38,11 @@ def main():
         if data.decode("utf-8")=="\n":
             splitted = string.split()
             if splitted[0] == "data":   #data 'format' = "data ADDRESS[0] ADDRESS[1] SENSOR_VALUE"
-                print("Received data from border-router : " + splitted[1:])
+                print("Received data from border-router : ",splitted[1:])
                 openvalve = add_new_data(int(splitted[1]), int(splitted[2]), float(splitted[3]))
-                if openvalve:
-                    mysocket.send("open "+ splitted[1] + " " + splitted[2] + " \n".encode("utf-8"))
+                if openvalve==1 :
+                    print("OPEN THE VALVES!")
+                    mysocket.send(("open "+ splitted[1] + " " + splitted[2] + " \n").encode("utf-8"))
             string=""
             counter+=1
         else:
