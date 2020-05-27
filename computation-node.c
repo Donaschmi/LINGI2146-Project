@@ -134,7 +134,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
           printf("Added entry\n");
       }
 
-      printf("Received data from %d\n", data->from.u8[0]);
       value_t* value = is_computing_child(values, &data->from);
       if (value != NULL){
         update_sensor_data(value, packet);
@@ -142,7 +141,8 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
           printf("Computing\n");
           // Compute
           if (least_squares(value)){
-            send_open_valve_command(child, from);
+            printf("%d\n",data->from.u8[0]);
+            send_open_valve_command(child, data);
           }
         }
         else // Do nothing
@@ -152,7 +152,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       // If less than 5 sensors to compute, compute, else forward
         if (slots < MAX_COMPUTATION_PER_SENSOR){
           forwarding = 0; // If we are still adding computation slot then we are not forwarding data to parent
-          printf("Empry slot available\n");
           value_t* v = add_to_computing(values, &data->from);
           if(v == NULL)
             printf("Failed to add new value_t\n");
@@ -173,6 +172,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       if (next == NULL)
         printf("No entry for this destination\n");
       else{ //Forward
+
         packetbuf_clear();
         packetbuf_copyfrom(packet, sizeof(command_t));
         runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
@@ -293,6 +293,12 @@ PROCESS_THREAD(sensor_process, ev, data)
       values[i] = NULL;
     }
   }
+
+  if ((*head) == NULL){
+    head = (node_t**) malloc(sizeof(node_t*));
+    (*head) = NULL;
+  }
+  print_table(head);
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)

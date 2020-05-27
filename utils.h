@@ -46,15 +46,26 @@ typedef struct parent {
  * Node specific 
  */
 typedef struct node_t {
-  linkaddr_t* dest;
-  linkaddr_t* reachable_from;
+  linkaddr_t dest;
+  linkaddr_t reachable_from;
   struct node_t* next;
 } node_t;
 
+static void print_table(node_t** head){
+  node_t* curr;
+  printf("table content : ");
+  for (curr=(*head); curr != NULL; curr=curr->next){
+    printf("(%d,%d),",curr->dest.u8[0], curr->reachable_from.u8[0]);
+  }
+  printf("\n");
+}
+
 static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkaddr_t* child){
   node_t* node = (node_t*) malloc(sizeof(node_t));
-  node->dest = dest;
-  node->reachable_from = child;
+  node->dest.u8[0] = dest->u8[0];
+  node->dest.u8[1] = dest->u8[1];
+  node->reachable_from.u8[0] = child->u8[0];
+  node->reachable_from.u8[1] = child->u8[1];
   node->next = *head;
   (*head) = node;
   return node;
@@ -63,8 +74,8 @@ static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkadd
 static linkaddr_t* get_forward_addr(node_t** head, const linkaddr_t* addr){
   node_t* curr = (*head);
   while (curr != NULL){
-    if (linkaddr_cmp(curr->dest, addr)){
-      return curr->reachable_from;
+    if (linkaddr_cmp(&curr->dest, addr)){
+      return &curr->reachable_from;
     }
     curr = curr->next;
   }
@@ -77,7 +88,7 @@ static void remove_from_table(node_t** head, const linkaddr_t* child){
   node_t* next = NULL;
   while (curr != NULL){
     next = curr->next;
-    if (linkaddr_cmp(curr->reachable_from, child)){
+    if (linkaddr_cmp(&curr->reachable_from, child)){
       if (curr == (*head)){
         //Removing head
         free(*head);
@@ -96,6 +107,7 @@ static void remove_from_table(node_t** head, const linkaddr_t* child){
     }
   }
 }
+
 
 /*----------------------*/
 typedef struct packet{
@@ -188,15 +200,14 @@ static void send_unlinked(child_t** children){
       children[i] = NULL;
 }
 
-static void send_open_valve_command(child_t* child, const linkaddr_t* mote){
+static void send_open_valve_command(child_t* child, data_t* data){
   command_t command;
   command.type = COMMAND;
-  command.dest.u8[0] = mote->u8[0];
-  command.dest.u8[1] = mote->u8[1];
+  command.dest = data->from;
   packetbuf_clear();
   packetbuf_copyfrom(&command, sizeof(command_t));
   runicast_send(&runicast, &child->addr, MAX_RETRANSMISSIONS);
-  printf("Sent command to %d\n", mote->u8[0]);
+  printf("Sent command to %d\n", command.dest.u8[0]);
 }
 
 static void forward_parent(packet_t* pkt, const linkaddr_t* parent){

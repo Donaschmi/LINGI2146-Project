@@ -57,10 +57,9 @@
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
 static parent_t* parent = NULL;
-static node_t** head = NULL;
+ node_t** head = NULL;
 static int valve_openned = 0;
 /*---------------------------------------------------------------------------*/
-
 /*---------------------------------------------------------------------------*/
 PROCESS(sensor_process, "sensor_process");
 PROCESS(valve_control, "valve_control");
@@ -133,32 +132,30 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
   switch (type){
-    case DATA:
-      printf("forwarding%d\n", parent->addr.u8[0]);
+    case DATA: ;
       data_t* data = (data_t*) packet;
+        print_table(head);
       if (get_forward_addr(head, &data->from) == NULL){
         node_t* node = add_to_table(head, &data->from, from);
         if (node != NULL)
-          printf("Added new entry\n");
+          printf("Added new entry %d, %d\n", node->dest.u8[0], node->reachable_from.u8[0]);
       }
       forward_parent(packet, &parent->addr);
       break;
-    case COMMAND: ;
+    case COMMAND: 
+      print_table(head);
       command_t* command = (command_t*) packet;
       if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){
         process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
       }
       else{
         linkaddr_t* next = get_forward_addr(head, &command->dest);
-        if (next == NULL)
-          printf("No entry for this destination\n");
-        else{
+        if (next != NULL){
           packetbuf_clear();
           packetbuf_copyfrom(packet, sizeof(command_t));
           runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
-          printf("Forwarding command to child\n");
+          printf("Forwarding command to child %d\n", next->u8[0]);
         }
-
       }
       break;
     case ALIVE:
@@ -179,7 +176,6 @@ sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmiss
     parent->addr.u8[0] = to->u8[0];
     parent->addr.u8[1] = to->u8[1];
   }
-  printf("Sent runicast\n");
 }
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
@@ -267,6 +263,11 @@ PROCESS_THREAD(sensor_process, ev, data)
       children[i] = NULL;
     }
   }
+  if (head == NULL){
+    head = (node_t**) malloc(sizeof(node_t*));
+    (*head) = NULL;
+    print_table(head);
+  }
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
@@ -305,7 +306,7 @@ PROCESS_THREAD(sensor_process, ev, data)
         packetbuf_clear();
         packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
-        printf("Sent data to parent\n");
+        printf("Sent data to parent %d\n", parent->addr.u8[0]);
       }
     }
   }

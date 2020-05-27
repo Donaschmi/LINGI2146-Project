@@ -126,7 +126,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case DATA:
       printf("Data : ");
       data_t* data = (data_t*) packet;
-      printf("%f : %d.%d\n", data->sensor_value, data->from.u8[0], data->from.u8[1]);
+      printf("%d.%d\n", data->from.u8[0], data->from.u8[1]);
       break;
     case COMMAND:
       printf(" : Command\n");
