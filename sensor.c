@@ -98,8 +98,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   } else {
     /* Detect duplicate callback */
     if(e->seq == seqno) {
-      printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
-       from->u8[0], from->u8[1], seqno);
       return;
     }
     /* Update existing history entry */
@@ -134,25 +132,26 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   switch (type){
     case DATA: ;
       data_t* data = (data_t*) packet;
-        print_table(head);
-      if (get_forward_addr(head, &data->from) == NULL){
+      if (get_forward_addr(head, &data->from) == NULL){ // Add to forwarding table if not exists
         node_t* node = add_to_table(head, &data->from, from);
-        if (node != NULL)
-          printf("Added new entry %d, %d\n", node->dest.u8[0], node->reachable_from.u8[0]);
+        if (node == NULL)
+          printf("Error adding new entry\n");
       }
-      forward_parent(packet, &parent->addr);
+      // Forward packet
+      packetbuf_clear();
+      packetbuf_copyfrom(data, sizeof(data_t));
+      runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
       break;
-    case COMMAND: 
-      print_table(head);
+    case COMMAND:; 
       command_t* command = (command_t*) packet;
-      if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){
+      if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){ // If command is for current node, open valve
         process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
       }
-      else{
+      else{ // Forward it to appropriate child
         linkaddr_t* next = get_forward_addr(head, &command->dest);
         if (next != NULL){
           packetbuf_clear();
-          packetbuf_copyfrom(packet, sizeof(command_t));
+          packetbuf_copyfrom(command, sizeof(command_t));
           runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
           printf("Forwarding command to child %d\n", next->u8[0]);
         }
@@ -166,6 +165,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case UNLINKED:
       break;
     default:
+      printf("wrong packet message\n");
       break;
   }
 }
@@ -181,11 +181,10 @@ static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
   if (linkaddr_cmp(&parent->addr, to)){
-    // Send unlinked broadcast 
+    // If we get timeout from parent, the link is dead and we should try to find a new parent
     parent = NULL;
     send_unlinked(children);
   }
-  // If we get timeout from parent, the link is dead and we should try to find a new parent
 
 }
 static const struct runicast_callbacks runicast_callbacks = {recv_runicast,
@@ -195,14 +194,7 @@ static struct runicast_conn runicast;
 
 static void
 recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
-  /*
-   * Logic :
-   *  -Is From child?
-   *    -If true : update last seen
-   *  - Check message type
-   *    -If no parent or better hops : send request to parent
-   *    -If parent_dead : set parent to null and warn children
-   */
+  // Remove timedout child from children
   update_child_timeout(children, from);
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
@@ -240,7 +232,7 @@ PROCESS_THREAD(sensor_process, ev, data)
 {
 
   /**
-   *  Initialize parent and children and databuffer
+   *  Initialize parent, children and forwarding table
    */
   if (parent == NULL){
     parent = malloc(sizeof(parent_t));
@@ -263,6 +255,7 @@ PROCESS_THREAD(sensor_process, ev, data)
       children[i] = NULL;
     }
   }
+
   if (head == NULL){
     head = (node_t**) malloc(sizeof(node_t*));
     (*head) = NULL;
@@ -285,10 +278,8 @@ PROCESS_THREAD(sensor_process, ev, data)
     static struct etimer et;
     etimer_set(&et, 60*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-    /*
-     *  Generate fake value and send it to parent unless valve is open
-     */
-    if (!no_parent(parent)){
+
+    if (!no_parent(parent)){ // Start sending data only when we have a parent
       remove_timedout_children(children);
       // Broadcast
       alive_t alive;
@@ -297,16 +288,18 @@ PROCESS_THREAD(sensor_process, ev, data)
       packetbuf_clear();
       packetbuf_copyfrom(&alive, sizeof(alive_t));
       broadcast_send(&broadcast);
-      if (!valve_openned){ // Send data
+      /*
+       *  Generate fake value and send it to parent unless valve is open
+       */
+      if (!valve_openned){ 
         data_t data;
         data.type = DATA;
         data.from = linkaddr_node_addr;
-        double random_value = rand() / RAND_MAX * 100;
+        int random_value = rand();
         data.sensor_value =  random_value;
         packetbuf_clear();
         packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
-        printf("Sent data to parent %d\n", parent->addr.u8[0]);
       }
     }
   }
