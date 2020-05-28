@@ -98,8 +98,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   } else {
     /* Detect duplicate callback */
     if(e->seq == seqno) {
-      printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
-       from->u8[0], from->u8[1], seqno);
       return;
     }
     /* Update existing history entry */
@@ -134,16 +132,18 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   switch (type){
     case DATA: ;
       data_t* data = (data_t*) packet;
-        print_table(head);
       if (get_forward_addr(head, &data->from) == NULL){
         node_t* node = add_to_table(head, &data->from, from);
         if (node != NULL)
           printf("Added new entry %d, %d\n", node->dest.u8[0], node->reachable_from.u8[0]);
       }
-      forward_parent(packet, &parent->addr);
+      packetbuf_clear();
+      packetbuf_copyfrom(data, sizeof(data_t));
+      runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
+      printf("forwarding data from %d\n", data->from.u8[0]);
       break;
-    case COMMAND: 
-      print_table(head);
+    case COMMAND:; 
+      printf("Received command\n");
       command_t* command = (command_t*) packet;
       if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){
         process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
@@ -152,7 +152,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
         linkaddr_t* next = get_forward_addr(head, &command->dest);
         if (next != NULL){
           packetbuf_clear();
-          packetbuf_copyfrom(packet, sizeof(command_t));
+          packetbuf_copyfrom(command, sizeof(command_t));
           runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
           printf("Forwarding command to child %d\n", next->u8[0]);
         }
@@ -166,6 +166,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case UNLINKED:
       break;
     default:
+      printf("wrong packet message\n");
       break;
   }
 }
@@ -298,15 +299,15 @@ PROCESS_THREAD(sensor_process, ev, data)
       packetbuf_copyfrom(&alive, sizeof(alive_t));
       broadcast_send(&broadcast);
       if (!valve_openned){ // Send data
-        data_t data;
-        data.type = DATA;
-        data.from = linkaddr_node_addr;
-        double random_value = rand() / RAND_MAX * 100;
-        data.sensor_value =  random_value;
+        data_t* data;
+        data->type = DATA;
+        data->from = linkaddr_node_addr;
+        int random_value = rand();
+        data->sensor_value =  random_value;
         packetbuf_clear();
-        packetbuf_copyfrom(&data, sizeof(data_t));
+        packetbuf_copyfrom(data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
-        printf("Sent data to parent %d\n", parent->addr.u8[0]);
+        printf("send data\n");
       }
     }
   }

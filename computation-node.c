@@ -96,8 +96,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     list_push(history_table, e);
   } else {
     if(e->seq == seqno) {
-      printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
-       from->u8[0], from->u8[1], seqno);
       return;
     }
     e->seq = seqno;
@@ -294,11 +292,10 @@ PROCESS_THREAD(sensor_process, ev, data)
     }
   }
 
-  if ((*head) == NULL){
+  if (head == NULL){
     head = (node_t**) malloc(sizeof(node_t*));
     (*head) = NULL;
   }
-  print_table(head);
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
@@ -333,7 +330,6 @@ PROCESS_THREAD(sensor_process, ev, data)
         alive.id = 0;
         packetbuf_copyfrom(&alive, sizeof(alive_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
-        printf("Send alive to parent\n");
       }
       
     }

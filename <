@@ -209,9 +209,18 @@ static void send_open_valve_command(child_t* child, data_t* data){
   printf("Sent command to %d\n", command.dest.u8[0]);
 }
 
-static void forward_parent(packet_t* pkt, const linkaddr_t* parent){
+static void forward_parent(packet_t* pkt, const linkaddr_t* parent, int type){
+  size_t size = 0;
+  switch (type){
+    case DATA:
+      size = sizeof(data_t);
+      break;
+    case COMMAND:
+      size = sizeof(command_t)
+        break;
+  }
   packetbuf_clear();
-  packetbuf_copyfrom(pkt, sizeof(data_t));
+  packetbuf_copyfrom(pkt, size);
   runicast_send(&runicast, parent, MAX_RETRANSMISSIONS);
 }
 

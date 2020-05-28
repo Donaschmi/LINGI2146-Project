@@ -56,6 +56,7 @@
 
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
+static node_t** head = NULL;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
@@ -126,7 +127,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case DATA:
       printf("data ");
       data_t* data = (data_t*) packet;
-      printf("%d %d %d \n", data->from.u8[0], data->from.u8[1], data->sensor_value);
       break;
     case COMMAND:
       printf(" : Command\n");
@@ -182,6 +182,11 @@ PROCESS_THREAD(sensor_process, ev, data)
       children[i] = NULL;
     }
     printf("Allocated memory for children\n");
+  }
+
+  if (head == NULL){
+    head = (node_t**) malloc(sizeof(node_t*));
+    (*head) = NULL;
   }
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
