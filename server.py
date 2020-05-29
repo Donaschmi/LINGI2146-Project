@@ -9,15 +9,18 @@ import numpy as np
 
 
 
-MAX_NUMBER_OF_VALUES = 5
+MAX_NUMBER_OF_VALUES = 30
+THRESHOLD = 2
 valueTable = [] #[[ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE],...]
 
 def least_square(ytable):
     x = np.linspace(start=0,stop=29,num=30)
     matrix = [x,]*len(ytable)
-    print(matrix)
     ret = np.linalg.lstsq(matrix,ytable)
-    return ret
+    print(ret[0][1])
+    if(ret[1]>THRESHOLD):
+        return 1
+    return 0
 
 def add_new_data(address1, address2, value):
     for i in valueTable:
