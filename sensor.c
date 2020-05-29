@@ -59,6 +59,7 @@ static child_t** children = NULL;
 static parent_t* parent = NULL;
  node_t** head = NULL;
 static int valve_openned = 0;
+static int SENSOR_VALUE = 0;
 /*---------------------------------------------------------------------------*/
 /*---------------------------------------------------------------------------*/
 PROCESS(sensor_process, "sensor_process");
@@ -108,7 +109,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   /*
    * Pseudo-code :
    *  - Check if recv is child
-   *    - If true : update timeout 
+   *    - If true : update timeout
    *    - If false : check if parent exist
    *      -If false : broadcast no more parent
    *      -If true : Add rcv to children if not parent
@@ -142,7 +143,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       }
       forward_parent(packet, &parent->addr);
       break;
-    case COMMAND: 
+    case COMMAND:
       print_table(head);
       command_t* command = (command_t*) packet;
       if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){
@@ -181,7 +182,7 @@ static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
   if (linkaddr_cmp(&parent->addr, to)){
-    // Send unlinked broadcast 
+    // Send unlinked broadcast
     parent = NULL;
     send_unlinked(children);
   }
@@ -301,8 +302,8 @@ PROCESS_THREAD(sensor_process, ev, data)
         data_t data;
         data.type = DATA;
         data.from = linkaddr_node_addr;
-        double random_value = rand() / RAND_MAX * 100;
-        data.sensor_value =  random_value;
+        SENSOR_VALUE += rand() % 5;
+        data.sensor_value = SENSOR_VALUE;
         packetbuf_clear();
         packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
@@ -320,6 +321,7 @@ PROCESS_THREAD(valve_control, ev, data){
   while (1){
     PROCESS_WAIT_EVENT();
     if (ev == PROCESS_EVENT_CONTINUE){
+      SENSOR_VALUE = 0;
       leds_on(LEDS_GREEN);
       etimer_set(&et, 600*CLOCK_SECOND);
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
