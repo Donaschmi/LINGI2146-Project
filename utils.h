@@ -10,10 +10,14 @@
 #define MAX_COMPUTATION_PER_SENSOR 5
 #define FETCH_DELAY 60
 #define TIMEOUT_DELAY 180
+#define NUMBER_VALUES 30
 
 static struct broadcast_conn broadcast;
 static struct runicast_conn runicast;
 
+/**
+ * Packet messages
+ */
 enum TYPES {
   DATA,
   COMMAND,
@@ -30,6 +34,9 @@ enum COMMANDS {
   CLOSE
 };
 
+/**
+ * Tree structure
+ */
 typedef struct child {
   linkaddr_t addr;
   unsigned long timeout;
@@ -43,7 +50,7 @@ typedef struct parent {
 
 /*-----------*/
 /**
- * Node specific 
+ * Forwarding table structure
  */
 typedef struct node_t {
   linkaddr_t dest;
@@ -51,6 +58,11 @@ typedef struct node_t {
   struct node_t* next;
 } node_t;
 
+/** 
+ * Prints the current forwarding table (dest, reachable_from)
+ * 
+ * @param head: pointer to the head of the table
+ */
 static void print_table(node_t** head){
   node_t* curr;
   printf("table content : ");
@@ -60,6 +72,16 @@ static void print_table(node_t** head){
   printf("\n");
 }
 
+/**
+ * Create a new entry and add it as the head of the forwarding table
+ * *head is the newly created node and node->next is the previous head
+ *
+ * @param head: pointer to the head of the table
+ * @param dest: address of the destination
+ * @param child: address of the child linked to dest
+ *
+ * @return: the new head of the forwarding table
+ */
 static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkaddr_t* child){
   node_t* node = (node_t*) malloc(sizeof(node_t));
   node->dest.u8[0] = dest->u8[0];
@@ -71,6 +93,15 @@ static node_t* add_to_table(node_t** head, const linkaddr_t* dest, const linkadd
   return node;
 }
 
+
+/**
+ * Get the address of the child linked to addr if any exists
+ *
+ * @param head: pointer to the head of the table
+ * @param addr: the address of the the mote we want to reach
+ *
+ * @return: the address of the child if it exists, else NULL
+ */
 static linkaddr_t* get_forward_addr(node_t** head, const linkaddr_t* addr){
   node_t* curr = (*head);
   while (curr != NULL){
@@ -82,6 +113,12 @@ static linkaddr_t* get_forward_addr(node_t** head, const linkaddr_t* addr){
   return NULL;
 }
 
+/**
+ * Removes the entry with dest "child"
+ *
+ * @param head: pointer to the head of the table
+ * @param child: the dest entry to remove
+ */
 static void remove_from_table(node_t** head, const linkaddr_t* child){
   node_t* curr = (*head);
   node_t* prev = curr;
@@ -150,11 +187,11 @@ typedef struct unlinked{
 
 
 typedef struct sensor_values{
-  int values[30];
   int index;
   int count;
   linkaddr_t addr;
   unsigned long timeout;
+  int values[NUMBER_VALUES];
 } value_t;
 
 /**
@@ -188,6 +225,11 @@ static void send_request(parent_t* p, uint8_t id, const linkaddr_t* p_req){
   runicast_send(&runicast, p_req, MAX_RETRANSMISSIONS);
 }
 
+/**
+ * Send an unlink packet to children
+ *
+ * @param children: array of child
+ */
 static void send_unlinked(child_t** children){
   unlinked_t unlinked;
   unlinked.type = UNLINKED;
@@ -199,6 +241,12 @@ static void send_unlinked(child_t** children){
       children[i] = NULL;
 }
 
+/**
+ * Send a COMMAND packet to data dest address
+ *
+ * @param child: mote linked to data dest addr
+ * @param data: Last packet received from mote that needs to open its valve
+ */
 static void send_open_valve_command(child_t* child, data_t* data){
   command_t command;
   command.type = COMMAND;
@@ -209,6 +257,13 @@ static void send_open_valve_command(child_t* child, data_t* data){
   printf("Sent command to %d\n", command.dest.u8[0]);
 }
 
+
+/**
+ * Forward a DATA packet to parent
+ *
+ * @param pkt: the packet to send
+ * @param parent: address of current mote's parent
+ */
 static void forward_parent(packet_t* pkt, const linkaddr_t* parent){
   packetbuf_clear();
   packetbuf_copyfrom(pkt, sizeof(data_t));
@@ -234,6 +289,14 @@ static child_t* is_mote_child(child_t** children, const linkaddr_t* mote){
   return NULL;
 }
 
+/**
+ * Check if mote is a member of the sensors beeing computed
+ *
+ * @param values: the array of values beeing computed
+ * @param mote: the address of the mote to check
+ *
+ * @return value_t*: the entry in the computation table if it exists, else NULL
+ */
 static value_t* is_computing_child(value_t** values, const linkaddr_t* mote){
   int i;
   for(i=0; i < MAX_COMPUTATION_PER_SENSOR; i++){
@@ -271,6 +334,14 @@ static void add_to_children(child_t** children, const linkaddr_t* new_child_addr
   }
 }
 
+/**
+ * Add a new computation unit for mote with address "from"
+ *
+ * @param sensors: The array of computation units already in use
+ * @param from: The address of the mote to add
+ *
+ * @return value_t*: the new entry if it was successfully added, else NULL
+ */
 static value_t* add_to_computing(value_t** sensors, const linkaddr_t* from){
   value_t* v = (value_t*) malloc(sizeof(value_t));
   v->index = 0;
@@ -325,8 +396,8 @@ static void update_child_timeout(child_t** children, const linkaddr_t* from){
 static void update_sensor_data(value_t* value, packet_t* pkt){
   data_t* data = (data_t*) pkt;
   value->values[value->index] = data->sensor_value;
-  value->index = (value->index + 1) % 30; // Wrap index
-  value->count = value->count == 30 ? 30 : value->count + 1;
+  value->index = (value->index + 1) % NUMBER_VALUES; // Wrap index
+  value->count = value->count == NUMBER_VALUES ? NUMBER_VALUES : value->count + 1;
   value->timeout = clock_seconds();
 }
 

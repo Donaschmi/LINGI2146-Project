@@ -100,16 +100,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     }
     e->seq = seqno;
   }
-  /*
-   * Pseudo-code :
-   *  - Check if recv is child
-   *    - If true : update timeout 
-   *    - If false : check if parent exist
-   *      -If false : broadcast no more parent
-   *      -If true : Add rcv to children if not parent
-   *  - Check message type
-   */
-  update_child_timeout(children, from);
+
   child_t* child = is_mote_child(children, from);
   if (child == NULL){
     if (parent != NULL){
@@ -121,33 +112,32 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       send_unlinked(children);
     }
   }
+  else{
+    update_child_timeout(children, from);
+  }
+
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
   switch (type){
     case DATA: ;
       data_t* data = (data_t*) packet;
-      if (get_forward_addr(head, &data->from) == NULL){
+      if (get_forward_addr(head, &data->from) == NULL){ // Add data addr to forwarding table if not exists
         node_t* node = add_to_table(head, &data->from, from);
-        if (node != NULL)
-          printf("Added entry\n");
+        if (node == NULL)
+          printf("Failed to add new entry\n");
       }
 
-      value_t* value = is_computing_child(values, &data->from);
+      value_t* value = is_computing_child(values, &data->from); // Check if this node is computing for the data addr
       if (value != NULL){
-        update_sensor_data(value, packet);
-        if (value->count == 3){ // TODO CHANGE TO 30
-          printf("Computing\n");
-          // Compute
-          if (least_squares(value)){
-            printf("%d\n",data->from.u8[0]);
+        update_sensor_data(value, packet); // Add new value
+        if (value->count == NUMBER_VALUES){ // Only compute when we have at least 30 values
+          if (least_squares(value)){ // Should we open the valve?
             send_open_valve_command(child, data);
           }
         }
-        else // Do nothing
-          printf("Added data for child %d, count : %d\n",value->addr.u8[0], value->count);
       }
       else{
-      // If less than 5 sensors to compute, compute, else forward
+        // If less than 5 sensors to compute, compute, else forward
         if (slots < MAX_COMPUTATION_PER_SENSOR){
           forwarding = 0; // If we are still adding computation slot then we are not forwarding data to parent
           value_t* v = add_to_computing(values, &data->from);
@@ -155,11 +145,9 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
             printf("Failed to add new value_t\n");
           else
             update_sensor_data(v, packet);
-          // We don't compute cause only one value inside
         }
-        else{
-          printf("No slot for %d\n", from->u8[0]);
-          forwarding = 1;
+        else{ // No slot, forward to parent
+          forwarding = 1; 
           forward_parent(packet, &parent->addr);
         }
       }
@@ -170,7 +158,6 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       if (next == NULL)
         printf("No entry for this destination\n");
       else{ //Forward
-
         packetbuf_clear();
         packetbuf_copyfrom(packet, sizeof(command_t));
         runicast_send(&runicast, next, MAX_RETRANSMISSIONS);
@@ -190,21 +177,19 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 static void
 sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-  if (no_parent(parent)){
+  if (no_parent(parent)){ // New parent
     parent->addr.u8[0] = to->u8[0];
     parent->addr.u8[1] = to->u8[1];
-    printf("New parent : %d\n", to->u8[0]);
   }
 }
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
+  // If we get timeout from parent, the link is dead and we should try to find a new parent
   if (linkaddr_cmp(&parent->addr, to)){
-    // Send unlinked broadcast 
     parent = NULL;
     send_unlinked(children);
   }
-  // If we get timeout from parent, the link is dead and we should try to find a new parent
 }
 static const struct runicast_callbacks runicast_callbacks = {recv_runicast,
 							     sent_runicast,
@@ -213,14 +198,6 @@ static struct runicast_conn runicast;
 
 static void
 recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
-  /*
-   * Logic :
-   *  -Is From child?
-   *    -If true : update last seen
-   *  - Check message type
-   *    -If no parent or better hops : send request to parent
-   *    -If parent_dead : set parent to null and warn children
-   */
   update_child_timeout(children, from);
   packet_t* packet = (packet_t*) packetbuf_dataptr();
   int type = packet->type;
@@ -233,9 +210,8 @@ recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from) {
       // Do i have a parent ? If not this one can be.
       alive_t* pkt = (alive_t*) packet;
       if (no_parent(parent)){
-        // send request to be child to "from"
         send_request(parent, pkt->id, from);
-      } else if (pkt->id < parent->id){
+      } else if (pkt->id < parent->id){ // Better number of hops
         send_request(parent, pkt->id, from);
       }
       break;
@@ -314,10 +290,12 @@ PROCESS_THREAD(sensor_process, ev, data)
 
     etimer_set(&et, 60*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+
     if (!no_parent(parent)){
-      remove_timedout_children(children);
+      // Remove timedout children and timedout value buffers
+      remove_timedout_children(children); 
       remove_timedout_sensors(values);
-      // Broadcast
+
       alive_t alive;
       alive.type = ALIVE;
       alive.id = parent->id + 1;
@@ -325,13 +303,12 @@ PROCESS_THREAD(sensor_process, ev, data)
       packetbuf_copyfrom(&alive, sizeof(alive_t));
       broadcast_send(&broadcast);
       
-      if (!forwarding){
-        packetbuf_clear();
+      if (!forwarding){ // Prevent timedout by parent if not sending any messages
         alive.id = 0;
+        packetbuf_clear();
         packetbuf_copyfrom(&alive, sizeof(alive_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
       }
-      
     }
   }
 
