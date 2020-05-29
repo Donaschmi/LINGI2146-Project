@@ -240,15 +240,11 @@ PROCESS_THREAD(serial_process, ev, data)
         mote->u8[1] = u82;
 
         printf("Received command to open the valve for %d.%d\n", u81, u82);
-        child_t* child = is_mote_child(children, mote);
+        linkaddr_t* addr = get_forward_addr(head, mote);
+        child_t* child = is_mote_child(children, addr);
 
-        data_t* pkt = (data_t*) malloc(sizeof(data_t));
-        pkt->type = COMMAND;
-        pkt->dest = child->addr;
-
-        send_open_valve_command(child, pkt);
+        send_open_valve_command(child, mote);
         free(mote);
-        free(pkt);
       }
       free(tmpmsg);
     }
