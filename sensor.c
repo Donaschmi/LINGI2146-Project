@@ -133,6 +133,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case DATA: ;
       data_t* data = (data_t*) packet;
       if (get_forward_addr(head, &data->from) == NULL){ // Add to forwarding table if not exists
+
         node_t* node = add_to_table(head, &data->from, from);
         if (node == NULL)
           printf("Error adding new entry\n");
@@ -298,7 +299,7 @@ PROCESS_THREAD(sensor_process, ev, data)
         int random_value = rand();
         data.sensor_value =  random_value;
         packetbuf_clear();
-        packetbuf_copyfrom(&data, sizeof(data_t));
+        packetbuf_copyfrom(data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
       }
     }
