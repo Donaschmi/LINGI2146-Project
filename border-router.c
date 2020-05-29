@@ -56,7 +56,6 @@
 
 /*---------------------------GLOBAL VARIABLES--------------------------------*/
 static child_t** children = NULL;
-static node_t** head = NULL;
 /*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
@@ -127,6 +126,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
     case DATA:
       printf("data ");
       data_t* data = (data_t*) packet;
+      printf("%d %d %d \n", data->from.u8[0], data->from.u8[1], data->sensor_value);
       break;
     case COMMAND:
       printf(" : Command\n");
@@ -184,11 +184,6 @@ PROCESS_THREAD(sensor_process, ev, data)
     printf("Allocated memory for children\n");
   }
 
-  if (head == NULL){
-    head = (node_t**) malloc(sizeof(node_t*));
-    (*head) = NULL;
-  }
-
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
   PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 
@@ -234,17 +229,14 @@ PROCESS_THREAD(serial_process, ev, data)
       if(strcmp(splittedMsg, "open")==0){ //received message should be like : "open ADDRESS[0] ADDRESS[1]"
 
         linkaddr_t* mote = (linkaddr_t*) malloc(sizeof(linkaddr_t));
-        int u81 = atoi(strtok(NULL, " "));
-        int u82 = atoi(strtok(NULL, " "));
-        mote->u8[0] = u81;
-        mote->u8[1] = u82;
+        mote->u8[0] = atoi(strtok(NULL, " "));
+        mote->u8[1] = atoi(strtok(NULL, " "));
 
-        printf("Received command to open the valve for %d.%d\n", u81, u82);
         child_t* child = is_mote_child(children, mote);
 
         data_t* pkt = (data_t*) malloc(sizeof(data_t));
         pkt->type = COMMAND;
-        pkt->dest = child->addr;
+        pkt->from = child->addr;
 
         send_open_valve_command(child, pkt);
         free(mote);
