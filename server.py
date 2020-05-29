@@ -10,20 +10,23 @@ import numpy as np
 
 
 MAX_NUMBER_OF_VALUES = 30
+THRESHOLD = 2
 valueTable = [] #[[ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE],...]
 
 def least_square(ytable):
     x = np.linspace(start=0,stop=29,num=30)
-    ret = np.linalg.lstsq(x,ytable)
-    print(ret)
-    return ret
+    matrix = [x,]*len(ytable)
+    ret = np.linalg.lstsq(matrix,ytable)
+    print(ret[0][1])
+    if(ret[1]>THRESHOLD):
+        return 1
+    return 0
 
 def add_new_data(address1, address2, value):
     for i in valueTable:
         if (i[0]==address1 and i[1]==address2):
-            print("size of the value table = ", len(i[2]))
+            #print("size of the value table = " + str(len(i[2])))
             i[3] = (i[3] + 1) % MAX_NUMBER_OF_VALUES
-            print("len of i[2] : ", len(i[2]))
             if (len(i[2]) == MAX_NUMBER_OF_VALUES):
                 i[2][i[3]] = value
                 return least_square(i[2])
@@ -47,10 +50,10 @@ def main():
         if data.decode("utf-8")=="\n":
             splitted = string.split()
             if splitted[0] == "data":   #data 'format' = "data ADDRESS[0] ADDRESS[1] SENSOR_VALUE"
-                print("Received data from border-router : ",splitted[1:])
+                print("Received data from border-router : " + str(splitted[1:]))
                 openvalve = add_new_data(int(splitted[1]), int(splitted[2]), float(splitted[3]))
                 if openvalve==1 :
-                    print("OPEN THE VALVES!")
+                    print("OPEN THE VALVES FOR " + splitted[1] + "." + splitted[2] + " !")
                     mysocket.send(("open "+ splitted[1] + " " + splitted[2] + " \n").encode("utf-8"))
             string=""
             counter+=1

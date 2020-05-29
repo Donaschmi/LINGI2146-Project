@@ -234,14 +234,17 @@ PROCESS_THREAD(serial_process, ev, data)
       if(strcmp(splittedMsg, "open")==0){ //received message should be like : "open ADDRESS[0] ADDRESS[1]"
 
         linkaddr_t* mote = (linkaddr_t*) malloc(sizeof(linkaddr_t));
-        mote->u8[0] = atoi(strtok(NULL, " "));
-        mote->u8[1] = atoi(strtok(NULL, " "));
+        int u81 = atoi(strtok(NULL, " "));
+        int u82 = atoi(strtok(NULL, " "));
+        mote->u8[0] = u81;
+        mote->u8[1] = u82;
 
+        printf("Received command to open the valve for %d.%d\n", u81, u82);
         child_t* child = is_mote_child(children, mote);
 
         data_t* pkt = (data_t*) malloc(sizeof(data_t));
         pkt->type = COMMAND;
-        pkt->from = child->addr;
+        pkt->dest = child->addr;
 
         send_open_valve_command(child, pkt);
         free(mote);
