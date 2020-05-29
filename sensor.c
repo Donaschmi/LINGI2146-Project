@@ -144,7 +144,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
       packetbuf_copyfrom(data, sizeof(data_t));
       runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
       break;
-    case COMMAND:; 
+    case COMMAND:;
       command_t* command = (command_t*) packet;
       if (linkaddr_cmp(&command->dest, &linkaddr_node_addr)){ // If command is for current node, open valve
         process_post(&valve_control, PROCESS_EVENT_CONTINUE, NULL);
@@ -292,12 +292,12 @@ PROCESS_THREAD(sensor_process, ev, data)
       /*
        *  Generate fake value and send it to parent unless valve is open
        */
-      if (!valve_openned){ 
+      if (!valve_openned){
         data_t data;
         data.type = DATA;
         data.from = linkaddr_node_addr;
-        SENSOR_VALUE += rand() % 5;
         data.sensor_value = SENSOR_VALUE;
+        SENSOR_VALUE += 3;//(abs(rand()) % 5);
         packetbuf_clear();
         packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
@@ -315,6 +315,7 @@ PROCESS_THREAD(valve_control, ev, data){
     PROCESS_WAIT_EVENT();
     if (ev == PROCESS_EVENT_CONTINUE){
       SENSOR_VALUE = 0;
+      printf("resetted sensor value : %d",SENSOR_VALUE);
       leds_on(LEDS_GREEN);
       etimer_set(&et, 600*CLOCK_SECOND);
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
