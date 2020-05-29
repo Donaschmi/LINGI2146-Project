@@ -16,11 +16,17 @@ valueTable = [] #[[ADDRESS[0], ADDRESS[1], VALUESLIST, INDEX_LAST_ADDED_VALUE],.
 def least_square(ytable):
     x = np.linspace(start=0,stop=MAX_NUMBER_OF_VALUES-1,num=MAX_NUMBER_OF_VALUES)
     matrix = [x,]*len(ytable)
-    ret = np.linalg.lstsq(matrix,ytable)
-    print(ret[0][1])
+    mat = np.zeros((MAX_NUMBER_OF_VALUES,2),int)
+    for i in range(MAX_NUMBER_OF_VALUES):
+        mat[i] = [0,i]
+    ret = np.linalg.lstsq(mat,ytable)
+    print("mat = ",mat)
+    print("ytable = ",ytable)
+    print("matrix = ",matrix)
+    print("ret = ",ret)
     if(ret[0][1]>THRESHOLD):
         return 1
-    return 1
+    return 0
 
 def add_new_data(address1, address2, value):
     for i in valueTable:

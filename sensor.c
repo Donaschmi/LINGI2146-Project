@@ -297,7 +297,7 @@ PROCESS_THREAD(sensor_process, ev, data)
         data.type = DATA;
         data.from = linkaddr_node_addr;
         data.sensor_value = SENSOR_VALUE;
-        SENSOR_VALUE += 3;//(abs(rand()) % 5);
+        SENSOR_VALUE += (abs(rand()) % 5);
         packetbuf_clear();
         packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
