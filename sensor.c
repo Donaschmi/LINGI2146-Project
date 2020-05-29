@@ -261,7 +261,6 @@ PROCESS_THREAD(sensor_process, ev, data)
   if (head == NULL){
     head = (node_t**) malloc(sizeof(node_t*));
     (*head) = NULL;
-    print_table(head);
   }
 
   PROCESS_EXITHANDLER(runicast_close(&runicast);)
@@ -300,7 +299,7 @@ PROCESS_THREAD(sensor_process, ev, data)
         SENSOR_VALUE += rand() % 5;
         data.sensor_value = SENSOR_VALUE;
         packetbuf_clear();
-        packetbuf_copyfrom(data, sizeof(data_t));
+        packetbuf_copyfrom(&data, sizeof(data_t));
         runicast_send(&runicast, &parent->addr, MAX_RETRANSMISSIONS);
       }
     }

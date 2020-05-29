@@ -132,7 +132,7 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
         update_sensor_data(value, packet); // Add new value
         if (value->count == NUMBER_VALUES){ // Only compute when we have at least 30 values
           if (least_squares(value)){ // Should we open the valve?
-            send_open_valve_command(child, data);
+            send_open_valve_command(child, &data->from);
           }
         }
       }

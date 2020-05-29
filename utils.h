@@ -247,10 +247,11 @@ static void send_unlinked(child_t** children){
  * @param child: mote linked to data dest addr
  * @param data: Last packet received from mote that needs to open its valve
  */
-static void send_open_valve_command(child_t* child, data_t* data){
+static void send_open_valve_command(child_t* child, const linkaddr_t* dest){
   command_t command;
   command.type = COMMAND;
-  command.dest = data->from;
+  command.dest.u8[0] = dest->u8[0];
+  command.dest.u8[1] = dest->u8[1];
   packetbuf_clear();
   packetbuf_copyfrom(&command, sizeof(command_t));
   runicast_send(&runicast, &child->addr, MAX_RETRANSMISSIONS);
